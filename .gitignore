@@ -87,3 +87,6 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+replicate_mysql_postgresql.ini
+replogposition.ini
