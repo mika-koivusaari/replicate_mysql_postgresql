@@ -90,3 +90,4 @@ ENV/
 
 replicate_mysql_postgresql.ini
 replogposition.ini
+.swp

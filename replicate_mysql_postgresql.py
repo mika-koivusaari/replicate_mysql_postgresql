@@ -31,59 +31,24 @@ from sys import exit
 
 MYSQL_SETTINGS = None
 
-CARBON_SERVER = None
-CARBON_PORT = None
-
-_EPOCH = datetime(1970, 1, 1)
-
 repLogFile = None
 repLogPosition = None
 repLogConfig = SafeConfigParser()
 
-graphiteConfHost = None
-graphiteConfUser = None
-graphiteConfPasswd = None
-graphiteConfDb = None
 repHost = None
 repPort = None
 repUser = None
 repPasswd = None
 config = SafeConfigParser()
 
-def readGraphiteConfig():
-  global graphiteConfHost
-  global graphiteConfUser
-  global graphiteConfPasswd
-  global graphiteConfDb
-
-#  db = pymysql.connect(host=graphiteConfHost, user=graphiteConfUser, passwd=graphiteConfPasswd, db=graphiteConfDb)
-#  cursor = db.cursor()
-
-#  cursor.execute("select sensorid,graphitepath,formula from graphite")
-  # get the resultset as a tuple
-#  result = cursor.fetchall()
-  graphiteConfig = {}
-#  for record in result:
-#    rec = dict({'graphitepath':record[1],'formula':record[2]})
-#    graphiteConfig[record[0]]=rec
-
-#  cursor.close()
-#  db.close()
-  print("Read graphite conf.")
-  return graphiteConfig
 
 def main():
   global repLogFile
   global repLogPosition
   global repLogConfig
 
-  graphiteConfig = readGraphiteConfig()
-
   try:
     print("Start")
-#    sock = socket.socket()
-#    sock.connect((CARBON_SERVER, CARBON_PORT))
-    print('Carbon socket opened.')
     stream = BinLogStreamReader(
         connection_settings=MYSQL_SETTINGS,
         server_id=2, #server id needs to be unique
@@ -98,16 +63,13 @@ def main():
       #put replication log file and position in variables so we can save them later
       repLogFile = stream.log_file
       repLogPosition = stream.log_pos
-      #also check for changes in graphite configuration and read again if needed
-#      if binlogevent.schema == "weather" and binlogevent.table == "graphite":
-#        graphiteConfig = readGraphiteConfig()
       #this is the data we are interested in
-      print("event in "+str(binlogevent.schema)+"."+str(binlogevent.table))
+#      print("event in "+str(binlogevent.schema)+"."+str(binlogevent.table))
       if binlogevent.schema == "weather" and binlogevent.table == "data":
-        print("event type1 "+type(binlogevent).__name__)
-        print("event rows "+str(binlogevent.rows))
+#        print("event type1 "+type(binlogevent).__name__)
+#        print("event rows "+str(binlogevent.rows))
         for row in binlogevent.rows:
-          print("event type2 "+type(binlogevent).__name__)
+#          print("event type2 "+type(binlogevent).__name__)
           #we only care about inserts
           if isinstance(binlogevent, WriteRowsEvent):
             vals = row["values"]
@@ -147,10 +109,6 @@ if __name__ == "__main__":
     print('replicationlogposition' + str(repLogPosition))
     config.read('replicate_mysql_postgresql.ini')
     try:
-#      graphiteConfHost = config.get('graphite_config','host')
-#      graphiteConfUser = config.get('graphite_config','user')
-#      graphiteConfPasswd = config.get('graphite_config','passwd')
-#      graphiteConfDb = config.get('graphite_config','db')
       repHost = config.get('replication_connection','host')
       repPort = config.getint('replication_connection','port')
       repUser = config.get('replication_connection','user')
@@ -161,8 +119,6 @@ if __name__ == "__main__":
         "user": repUser,
         "passwd": repPasswd
       }
- #     CARBON_SERVER = config.get('carbon','host')
- #     CARBON_PORT = config.getint('carbon','port')
     except NoSectionError:
       print('Error in mysql_to_graphite.ini')
       exit()
