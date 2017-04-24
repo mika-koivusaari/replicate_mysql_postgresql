@@ -28,6 +28,7 @@ import calendar
 import time
 from datetime import datetime
 from sys import exit
+import psycopg2
 
 MYSQL_SETTINGS = None
 
@@ -41,6 +42,15 @@ repUser = None
 repPasswd = None
 config = SafeConfigParser()
 
+def openDestination():
+  global destHost
+  global destUser
+  global destPasswd
+  global destDb
+  global destPort
+  db = psycopg2.connect(host=destHost, user=destUser, password=destPasswd,dbname=destDb,port=int(destPort))
+  cursor = db.cursor()
+  return cursor
 
 def main():
   global repLogFile
@@ -58,6 +68,7 @@ def main():
         log_pos=repLogPosition,
         resume_stream=False if repLogPosition==None else True)
     print("Binlog stream opened")
+    cursor=openDestination()
 
     for binlogevent in stream:
       #put replication log file and position in variables so we can save them later
@@ -74,6 +85,9 @@ def main():
           if isinstance(binlogevent, WriteRowsEvent):
             vals = row["values"]
             print(str(vals["sensorid"]), str(vals["time"]), str(vals["value"]))
+            cursor.execute("INSERT INTO data (sensorid,time,value) VALUES (%s,date_trunc('minute',%s::timestamp), trunc(%s,2))",(vals["sensorid"],str(vals["time"]), str(vals["value"])))
+            cursor.execute("commit")
+
             #check if the sensor is one that we have configuration for
  #           if vals["sensorid"] in graphiteConfig:
  #             conf = graphiteConfig[vals["sensorid"]]
@@ -119,6 +133,12 @@ if __name__ == "__main__":
         "user": repUser,
         "passwd": repPasswd
       }
+      destHost = config.get('postgresql_config','host')
+      destPort = config.getint('postgresql_config','port')
+      destUser = config.get('postgresql_config','user')
+      destPasswd = config.get('postgresql_config','passwd')
+      destDb = config.get('postgresql_config','db')
+
     except NoSectionError:
       print('Error in mysql_to_graphite.ini')
       exit()
