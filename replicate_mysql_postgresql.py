@@ -1,19 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-#
-#
-#Graphite config is stored in the following table
-#mysql> desc graphite;
-#+--------------+---------------------+------+-----+---------+-------+
-#| Field        | Type                | Null | Key | Default | Extra |
-#+--------------+---------------------+------+-----+---------+-------+
-#| sensorid     | bigint(20) unsigned | NO   | PRI | NULL    |       |
-#| graphitepath | varchar(200)        | NO   |     | NULL    |       |
-#| formula      | varchar(4000)       | YES  |     | NULL    |       |
-#+--------------+---------------------+------+-----+---------+-------+
-
-
 from pymysqlreplication import BinLogStreamReader
 from pymysqlreplication.row_event import (
     WriteRowsEvent,
@@ -29,6 +16,8 @@ import time
 from datetime import datetime
 from sys import exit
 import psycopg2
+from psycopg2 import IntegrityError
+import sys
 
 MYSQL_SETTINGS = None
 
@@ -50,7 +39,14 @@ def openDestination():
   global destPort
   db = psycopg2.connect(host=destHost, user=destUser, password=destPasswd,dbname=destDb,port=int(destPort))
   cursor = db.cursor()
+  print("Destination opened.")
   return cursor
+
+def saveReplogPosition(repLogFile,repLogPosition):
+    repLogConfig.set('replicationlog','file',repLogFile)
+    repLogConfig.set('replicationlog','position',str(repLogPosition))
+    with open('replogposition.ini', 'w') as f:
+      repLogConfig.write(f)
 
 def main():
   global repLogFile
@@ -75,41 +71,29 @@ def main():
       repLogFile = stream.log_file
       repLogPosition = stream.log_pos
       #this is the data we are interested in
-#      print("event in "+str(binlogevent.schema)+"."+str(binlogevent.table))
       if binlogevent.schema == "weather" and binlogevent.table == "data":
-#        print("event type1 "+type(binlogevent).__name__)
-#        print("event rows "+str(binlogevent.rows))
         for row in binlogevent.rows:
-#          print("event type2 "+type(binlogevent).__name__)
           #we only care about inserts
           if isinstance(binlogevent, WriteRowsEvent):
-            vals = row["values"]
-            print(str(vals["sensorid"]), str(vals["time"]), str(vals["value"]))
-            cursor.execute("INSERT INTO data (sensorid,time,value) VALUES (%s,date_trunc('minute',%s::timestamp), trunc(%s,2))",(vals["sensorid"],str(vals["time"]), str(vals["value"])))
-            cursor.execute("commit")
-
-            #check if the sensor is one that we have configuration for
- #           if vals["sensorid"] in graphiteConfig:
- #             conf = graphiteConfig[vals["sensorid"]]
- #             value = float(vals["value"])
- #             #do a conversion if needed
- #             if conf["formula"]!=None and conf["formula"]!="":
- #               value=eval(conf["formula"], {"__builtins__": {}}, {"value":value,"round":round})
-              #construc the message and send it to carbon
- #             message = '%s %f %d\n' % (conf["graphitepath"], value, round((vals["time"] - _EPOCH).total_seconds()))
- #             sock.sendall(message)
- #             print str(vals["sensorid"]), str(vals["time"]), str(value)
- #             print message
+            try:
+              vals = row["values"]
+              cursor.execute("INSERT INTO data (sensorid,time,value) VALUES (%s,date_trunc('minute',%s::timestamp), trunc(%s,2))",(vals["sensorid"],str(vals["time"]), str(vals["value"])))
+              cursor.execute("commit")
+            except IntegrityError as ie:
+              print("IntegrityError: " + str(sys.exc_info()[1]))
+              print("Values: "+str(vals["sensorid"]), str(vals["time"]), str(vals["value"]))
+              cursor.execute("ROLLBACK")
 
   except KeyboardInterrupt:
     #close open connections
     stream.close()
-#    sock.close()
     #save replication log position
-    repLogConfig.set('replicationlog','file',repLogFile)
-    repLogConfig.set('replicationlog','position',str(repLogPosition))
-    with open('replogposition.ini', 'w') as f:
-      repLogConfig.write(f)
+    saveReplogPosition(repLogFile,repLogPosition)
+  except Exception as e:
+    saveReplogPosition(repLogFile,repLogPosition)
+    print("Error: "+str(e))
+    print("Values: "+str(vals["sensorid"]), str(vals["time"]), str(vals["value"]))
+    raise e
 
 
 if __name__ == "__main__":
@@ -119,8 +103,8 @@ if __name__ == "__main__":
       repLogPosition=repLogConfig.getint('replicationlog','position')
     except NoSectionError:
       repLogConfig.add_section('replicationlog')
-    print('replicationlogfile' + str(repLogFile))
-    print('replicationlogposition' + str(repLogPosition))
+    print('replicationlogfile ' + str(repLogFile))
+    print('replicationlogposition ' + str(repLogPosition))
     config.read('replicate_mysql_postgresql.ini')
     try:
       repHost = config.get('replication_connection','host')
