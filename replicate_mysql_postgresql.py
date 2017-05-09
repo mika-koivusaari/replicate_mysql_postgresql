@@ -18,6 +18,7 @@ from sys import exit
 import psycopg2
 from psycopg2 import IntegrityError
 import sys
+import os
 
 MYSQL_SETTINGS = None
 
@@ -37,7 +38,7 @@ def openDestination():
   global destPasswd
   global destDb
   global destPort
-  db = psycopg2.connect(host=destHost, user=destUser, password=destPasswd,dbname=destDb,port=int(destPort))
+  db = psycopg2.connect(host=destHost, user=destUser, password=destPasswd,dbname=destDb,port=int(destPort),application_name=os.path.basename(sys.argv[0]))
   cursor = db.cursor()
   print("Destination opened.")
   return cursor
