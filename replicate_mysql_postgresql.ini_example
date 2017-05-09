@@ -3,6 +3,8 @@ host = localhost
 port = 3306
 user = slave_user
 passwd = [password]
+#server id must be unique
+serverid = 2
 
 [mysql_config]
 host = localhost

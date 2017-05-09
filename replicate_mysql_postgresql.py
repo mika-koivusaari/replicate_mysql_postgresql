@@ -57,7 +57,7 @@ def main():
     print("Start")
     stream = BinLogStreamReader(
         connection_settings=MYSQL_SETTINGS,
-        server_id=2, #server id needs to be unique
+        server_id=repServerId, #server id needs to be unique
         only_events=[WriteRowsEvent,DeleteRowsEvent,UpdateRowsEvent],
         blocking=True,
         log_file=repLogFile,
@@ -117,6 +117,7 @@ if __name__ == "__main__":
         "user": repUser,
         "passwd": repPasswd
       }
+      repServerId = config.getint('replication_connection','serverid')
       destHost = config.get('postgresql_config','host')
       destPort = config.getint('postgresql_config','port')
       destUser = config.get('postgresql_config','user')
