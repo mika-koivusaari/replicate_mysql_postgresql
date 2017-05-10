@@ -17,6 +17,7 @@ from datetime import datetime
 from sys import exit
 import psycopg2
 from psycopg2 import IntegrityError
+from psycopg2 import OperationalError
 import sys
 import os
 
@@ -56,34 +57,58 @@ def main():
 
   try:
     print("Start")
-    stream = BinLogStreamReader(
-        connection_settings=MYSQL_SETTINGS,
-        server_id=repServerId, #server id needs to be unique
-        only_events=[WriteRowsEvent,DeleteRowsEvent,UpdateRowsEvent],
-        blocking=True,
-        log_file=repLogFile,
-        log_pos=repLogPosition,
-        resume_stream=False if repLogPosition==None else True)
-    print("Binlog stream opened")
-    cursor=openDestination()
+    while True:
+      try:
+        stream = BinLogStreamReader(
+            connection_settings=MYSQL_SETTINGS,
+            server_id=repServerId, #server id needs to be unique
+            only_events=[WriteRowsEvent,DeleteRowsEvent,UpdateRowsEvent],
+            blocking=True,
+            log_file=repLogFile,
+            log_pos=repLogPosition,
+            resume_stream=False if repLogPosition==None else True)
+        print("Binlog stream opened")
+        cursor=openDestination()
 
-    for binlogevent in stream:
-      #put replication log file and position in variables so we can save them later
-      repLogFile = stream.log_file
-      repLogPosition = stream.log_pos
-      #this is the data we are interested in
-      if binlogevent.schema == "weather" and binlogevent.table == "data":
-        for row in binlogevent.rows:
-          #we only care about inserts
-          if isinstance(binlogevent, WriteRowsEvent):
-            try:
-              vals = row["values"]
-              cursor.execute("INSERT INTO data (sensorid,time,value) VALUES (%s,date_trunc('minute',%s::timestamp), trunc(%s,2))",(vals["sensorid"],str(vals["time"]), str(vals["value"])))
-              cursor.execute("commit")
-            except IntegrityError as ie:
-              print("IntegrityError: " + str(sys.exc_info()[1]))
-              print("Values: "+str(vals["sensorid"]), str(vals["time"]), str(vals["value"]))
-              cursor.execute("ROLLBACK")
+        for binlogevent in stream:
+          #put replication log file and position in variables so we can save them later
+          repLogFile = stream.log_file
+          repLogPosition = stream.log_pos
+          #this is the data we are interested in
+          if binlogevent.schema == "weather" and binlogevent.table == "data":
+            for row in binlogevent.rows:
+              #we only care about inserts
+              if isinstance(binlogevent, WriteRowsEvent):
+                while True: #loop until we are succesfull in inserting
+                  try:
+                    vals = row["values"]
+                    cursor.execute("INSERT INTO data (sensorid,time,value) VALUES (%s,date_trunc('minute',%s::timestamp), trunc(%s,2))",(vals["sensorid"],str(vals["time"]), str(vals["value"])))
+                    cursor.execute("commit")
+                    break
+                  except IntegrityError as ie:
+                    print("IntegrityError: " + str(sys.exc_info()[1]))
+                    print("Values: "+str(vals["sensorid"]), str(vals["time"]), str(vals["value"]))
+                    cursor.execute("ROLLBACK")
+                  except OperationalError as e:
+                    cursor=None
+                    print(str(e))
+                    print('Reconnect after 1 minute')
+                    while True: #loop until we get a new connection
+                      time.sleep(60)
+                      try:
+                        cursor=openDestination()
+                        print('Reconnect succesfull.')
+                      except:
+                        print('.',)
+                      if cursor != None:
+                        break
+        print("Binlog events ended.")
+        print("Reconnect after 1 minute.")
+        time.sleep(10)
+      except pymysql.err.OperationalError as cre:
+        print("Unable to connect: "+str(cre))
+        print("Reconnect after 1 minute.")
+        time.sleep(10)
 
   except KeyboardInterrupt:
     #close open connections
