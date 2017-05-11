@@ -100,6 +100,7 @@ def main():
                     print("IntegrityError: " + str(sys.exc_info()[1]))
                     print("Values: "+str(vals["sensorid"]), str(vals["time"]), str(vals["value"]))
                     cursor.execute("ROLLBACK")
+                    break
                   except OperationalError as e:
                     cursor=None
                     print(str(e))
