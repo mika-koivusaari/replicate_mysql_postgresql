@@ -50,10 +50,17 @@ def saveReplogPosition(repLogFile,repLogPosition):
     with open('replogposition.ini', 'w') as f:
       repLogConfig.write(f)
 
+def insertMessage(cursor,message):
+  sql="INSERT INTO messages (author,\"from\",message) VALUES ('REPLICATION',localtimestamp,%s) RETURNING message_id"
+  cursor.execute(sql,(message,))
+  id=cursor.fetchone()[0]
+  return id
+
 def main():
   global repLogFile
   global repLogPosition
   global repLogConfig
+  id=None
 
   try:
     print("Start")
@@ -71,6 +78,10 @@ def main():
         cursor=openDestination()
 
         for binlogevent in stream:
+          if id!=None: #there has been an error
+            #update error as ended
+            cursor.execute("UPDATE messages SET \"to\"=localtimestamp WHERE message_id=%s",(id,))
+            id=None
           #put replication log file and position in variables so we can save them later
           repLogFile = stream.log_file
           repLogPosition = stream.log_pos
@@ -102,13 +113,17 @@ def main():
                         print('.',)
                       if cursor != None:
                         break
+        if id==None:
+          id=insertMessage(cursor,"Replikointivirhe.")
         print("Binlog events ended.")
         print("Reconnect after 1 minute.")
-        time.sleep(10)
+        time.sleep(60)
       except pymysql.err.OperationalError as cre:
+        if id==None:
+          id=insertMessage(cursor,"Replikointivirhe.")
         print("Unable to connect: "+str(cre))
         print("Reconnect after 1 minute.")
-        time.sleep(10)
+        time.sleep(60)
 
   except KeyboardInterrupt:
     #close open connections
